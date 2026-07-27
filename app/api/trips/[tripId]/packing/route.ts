@@ -4,13 +4,14 @@ import { isAuthed } from "@/lib/auth";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { tripId: string } }
+  { params }: { params: Promise<{ tripId: string }> }
 ) {
-  if (!isAuthed()) {
+  if (!(await isAuthed())) {
     return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
   }
   try {
-    const items = await getPackingItems(params.tripId);
+    const { tripId } = await params;
+    const items = await getPackingItems(tripId);
     return NextResponse.json(items);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -19,14 +20,15 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { tripId: string } }
+  { params }: { params: Promise<{ tripId: string }> }
 ) {
-  if (!isAuthed()) {
+  if (!(await isAuthed())) {
     return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
   }
   try {
+    const { tripId } = await params;
     const { name } = await req.json();
-    const id = await createPackingItem(params.tripId, name);
+    const id = await createPackingItem(tripId, name);
     return NextResponse.json({ id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

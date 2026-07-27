@@ -1,0 +1,32 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "hyunra-trip",
+	"compatibility_date": "2026-07-27",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "hyunra-trip"
+		}
+	],
+	"images": {
+		// Enable image optimization
+		// see https://opennext.js.org/cloudflare/howtos/image
+		"binding": "IMAGES"
+	},
+	"vars": {
+		"NEXT_PUBLIC_NAVER_MAP_CLIENT_ID": "8yrvvb3j8s",
+		"NOTION_TRAVEL_DB_ID": "3a46b59b-151a-805f-8860-e511413d5343",
+		"NOTION_TRIPS_DB_ID": "34b6b59b-151a-809d-ac8c-ec2a97d506d7"
+	}
+}

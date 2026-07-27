@@ -2,10 +2,10 @@ import { isAuthed } from "@/lib/auth";
 import PasswordGate from "@/components/PasswordGate";
 import TripPlanner from "@/components/TripPlanner";
 
-export default function RecordsPage() {
+export default async function RecordsPage() {
   const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID;
 
-  if (!isAuthed()) {
+  if (!(await isAuthed())) {
     return <PasswordGate />;
   }
 

@@ -1,10 +1,46 @@
-import { Client } from "@notionhq/client";
 import type { Trip, Place, PackingItem } from "@/types";
 
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
+const NOTION_BASE = "https://api.notion.com/v1";
+const NOTION_VERSION = "2022-06-28";
 
 const TRIPS_DB_ID = process.env.NOTION_TRIPS_DB_ID!;
 const TRAVEL_DB_ID = process.env.NOTION_TRAVEL_DB_ID!;
+
+async function notionFetch(path: string, options: RequestInit = {}): Promise<any> {
+  const res = await fetch(`${NOTION_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
+      "Notion-Version": NOTION_VERSION,
+      "Content-Type": "application/json",
+      ...(options.headers ?? {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.message || `Notion API error (${res.status})`);
+  }
+  return data;
+}
+
+function queryDatabase(databaseId: string, body: Record<string, unknown> = {}) {
+  return notionFetch(`/databases/${databaseId}/query`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+function listBlockChildren(blockId: string) {
+  return notionFetch(`/blocks/${blockId}/children?page_size=100`);
+}
+
+function createPage(body: Record<string, unknown>) {
+  return notionFetch(`/pages`, { method: "POST", body: JSON.stringify(body) });
+}
+
+function updatePage(pageId: string, body: Record<string, unknown>) {
+  return notionFetch(`/pages/${pageId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
 
 function titleOf(prop: any): string {
   return prop?.title?.map((t: any) => t.plain_text).join("") ?? "";
@@ -15,8 +51,7 @@ function textOf(prop: any): string {
 }
 
 export async function getTrips(): Promise<Trip[]> {
-  const res = await notion.databases.query({
-    database_id: TRIPS_DB_ID,
+  const res = await queryDatabase(TRIPS_DB_ID, {
     sorts: [{ property: "날짜", direction: "descending" }],
   });
   return res.results.map((page: any) => ({
@@ -31,7 +66,7 @@ const packingDbCache = new Map<string, string>();
 
 async function findPackingDbId(blockId: string, depth = 0): Promise<string | null> {
   if (depth > 4) return null;
-  const children = await notion.blocks.children.list({ block_id: blockId });
+  const children = await listBlockChildren(blockId);
   for (const block of children.results as any[]) {
     if (
       block.type === "child_database" &&
@@ -70,8 +105,7 @@ function mapPlacePage(page: any): Place {
 }
 
 export async function getPlaces(tripPageId: string): Promise<Place[]> {
-  const res = await notion.databases.query({
-    database_id: TRAVEL_DB_ID,
+  const res = await queryDatabase(TRAVEL_DB_ID, {
     filter: {
       and: [
         { property: "여행플래너 표시", checkbox: { equals: true } },
@@ -81,17 +115,16 @@ export async function getPlaces(tripPageId: string): Promise<Place[]> {
   });
   return res.results
     .map(mapPlacePage)
-    .filter((p): p is Place => p.lat != null && p.lng != null);
+    .filter((p: Place): p is Place => p.lat != null && p.lng != null);
 }
 
 export async function getAllPlaces(): Promise<Place[]> {
-  const res = await notion.databases.query({
-    database_id: TRAVEL_DB_ID,
+  const res = await queryDatabase(TRAVEL_DB_ID, {
     filter: { property: "여행플래너 표시", checkbox: { equals: true } },
   });
   return res.results
     .map(mapPlacePage)
-    .filter((p): p is Place => p.lat != null && p.lng != null);
+    .filter((p: Place): p is Place => p.lat != null && p.lng != null);
 }
 
 function dayDiff(dateIso: string): number {
@@ -103,7 +136,7 @@ function dayDiff(dateIso: string): number {
 }
 
 export async function getFeaturedTrip(): Promise<Trip | null> {
-  const res = await notion.databases.query({ database_id: TRIPS_DB_ID });
+  const res = await queryDatabase(TRIPS_DB_ID);
   const items = res.results.map((page: any) => ({
     id: page.id,
     title: titleOf(page.properties["제목"]),
@@ -113,43 +146,34 @@ export async function getFeaturedTrip(): Promise<Trip | null> {
   }));
   if (items.length === 0) return null;
 
-  const pinned = items.find((t) => t.featured);
+  const pinned = items.find((t: any) => t.featured);
   if (pinned) return pinned;
 
-  const dated = items.filter((t) => t.date);
+  const dated = items.filter((t: any) => t.date);
   const future = dated
-    .map((t) => ({ ...t, diff: dayDiff(t.date as string) }))
-    .filter((t) => t.diff >= 0)
-    .sort((a, b) => a.diff - b.diff);
+    .map((t: any) => ({ ...t, diff: dayDiff(t.date as string) }))
+    .filter((t: any) => t.diff >= 0)
+    .sort((a: any, b: any) => a.diff - b.diff);
   if (future.length > 0) return future[0];
 
   const past = dated
-    .map((t) => ({ ...t, diff: dayDiff(t.date as string) }))
-    .sort((a, b) => b.diff - a.diff);
+    .map((t: any) => ({ ...t, diff: dayDiff(t.date as string) }))
+    .sort((a: any, b: any) => b.diff - a.diff);
   if (past.length > 0) return past[0];
 
   return items[0];
 }
 
 export async function setFeaturedTrip(tripId: string): Promise<void> {
-  const res = await notion.databases.query({
-    database_id: TRIPS_DB_ID,
+  const res = await queryDatabase(TRIPS_DB_ID, {
     filter: { property: "대시보드 표시", checkbox: { equals: true } },
   });
   await Promise.all(
     res.results
       .filter((p: any) => p.id !== tripId)
-      .map((p: any) =>
-        notion.pages.update({
-          page_id: p.id,
-          properties: { "대시보드 표시": { checkbox: false } },
-        })
-      )
+      .map((p: any) => updatePage(p.id, { properties: { "대시보드 표시": { checkbox: false } } }))
   );
-  await notion.pages.update({
-    page_id: tripId,
-    properties: { "대시보드 표시": { checkbox: true } },
-  });
+  await updatePage(tripId, { properties: { "대시보드 표시": { checkbox: true } } });
 }
 
 export async function createPlace(
@@ -163,7 +187,7 @@ export async function createPlace(
     visitDate?: string | null;
   }
 ): Promise<string> {
-  const page = await notion.pages.create({
+  const page = await createPage({
     parent: { database_id: TRAVEL_DB_ID },
     properties: {
       장소명: { title: [{ text: { content: data.name } }] },
@@ -191,16 +215,16 @@ export async function updatePlace(
     properties.주소 = { rich_text: data.address ? [{ text: { content: data.address } }] : [] };
   if (data.visitDate !== undefined)
     properties.방문일 = data.visitDate ? { date: { start: data.visitDate } } : { date: null };
-  await notion.pages.update({ page_id: placeId, properties });
+  await updatePage(placeId, { properties });
 }
 
 export async function deletePlace(placeId: string): Promise<void> {
-  await notion.pages.update({ page_id: placeId, archived: true });
+  await updatePage(placeId, { archived: true });
 }
 
 export async function getPackingItems(tripPageId: string): Promise<PackingItem[]> {
   const dbId = await getPackingDbId(tripPageId);
-  const res = await notion.databases.query({ database_id: dbId });
+  const res = await queryDatabase(dbId);
   return res.results.map((page: any) => ({
     id: page.id,
     name: titleOf(page.properties["이름"]),
@@ -210,7 +234,7 @@ export async function getPackingItems(tripPageId: string): Promise<PackingItem[]
 
 export async function createPackingItem(tripPageId: string, name: string): Promise<string> {
   const dbId = await getPackingDbId(tripPageId);
-  const page = await notion.pages.create({
+  const page = await createPage({
     parent: { database_id: dbId },
     properties: {
       이름: { title: [{ text: { content: name } }] },
@@ -220,12 +244,9 @@ export async function createPackingItem(tripPageId: string, name: string): Promi
 }
 
 export async function togglePackingItem(itemId: string, done: boolean): Promise<void> {
-  await notion.pages.update({
-    page_id: itemId,
-    properties: { "준비 완료": { checkbox: done } },
-  });
+  await updatePage(itemId, { properties: { "준비 완료": { checkbox: done } } });
 }
 
 export async function deletePackingItem(itemId: string): Promise<void> {
-  await notion.pages.update({ page_id: itemId, archived: true });
+  await updatePage(itemId, { archived: true });
 }

@@ -3,7 +3,7 @@ import { getTrips } from "@/lib/notion";
 import { isAuthed } from "@/lib/auth";
 
 export async function GET() {
-  if (!isAuthed()) {
+  if (!(await isAuthed())) {
     return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
   }
   try {
