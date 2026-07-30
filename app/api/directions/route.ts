@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 type LatLng = { lat: number; lng: number };
 
 async function fetchLeg(from: LatLng, to: LatLng): Promise<LatLng[] | null> {
-  const url = new URL("https://naveropenapi.apigw.ntruss.com/map-direction/v1/driving");
+  const url = new URL("https://maps.apigw.ntruss.com/map-direction/v1/driving");
   url.searchParams.set("start", `${from.lng},${from.lat}`);
   url.searchParams.set("goal", `${to.lng},${to.lat}`);
   url.searchParams.set("option", "trafast");
